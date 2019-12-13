@@ -34,44 +34,39 @@
 	</bean>
 	
 	<bean id="reader" class="com.devblogs.batch.reader.WrappedItemReader">
-		<property name="delegateReader" ref="targetReader" />
+		<property name="delegateReader">
+			<bean class="org.springframework.batch.item.database.JdbcCursorItemReader">
+				<property name="dataSource" ref="inputDataSource" />
+				<property name="maxRows" value="10" />
+				<property name="sql" value="SELECT id, name, description, price FROM items" />
+				<property name="rowMapper">
+					<bean class="com.devblogs.batch.reader.ProductRowMapper" />
+				</property>
+			</bean>
+		</property>
 	</bean>
-	
-	<bean id="targetReader" class="org.springframework.batch.item.database.JdbcCursorItemReader">
-		<property name="dataSource" ref="inputDataSource" />
-		<property name="maxRows" value="10" />
-		<property name="sql" value="SELECT id, name, description, price FROM items" />
-		<property name="rowMapper" ref="itemRowMapper" />
-	</bean>
-
-	<bean id="itemRowMapper" class="com.devblogs.batch.reader.ProductRowMapper" />
-	
-	<!-- <bean id="writer" class="com.devblogs.batch.wrtier.ProductJdbcItemWriter">
-		<constructor-arg ref="dataSource" />
-	</bean> -->
 	
 	<bean id="writer" class="org.springframework.batch.integration.chunk.ChunkMessageChannelItemWriter" scope="step">
-		<property name="messagingOperations" ref="messagingGateway"/>
+		<property name="messagingOperations">
+			<bean class="org.springframework.integration.core.MessagingTemplate">
+				<property name="defaultChannel" ref="request" />
+				<property name="receiveTimeout" value="1000" />
+			</bean>
+		</property>
 		<property name="replyChannel" ref="replies" />
 		<property name="maxWaitTimeouts" value="10" />
 	</bean>
 	
-	<bean id="chunkHandler" class="org.springframework.batch.integration.chunk.RemoteChunkHandlerFactoryBean">
-		<property name="chunkWriter" ref="writer" />
-		<property name="step" ref="stepRemoteChunk" />
-	</bean>
+	<int:channel id="request" />
 	
-	<bean id="messagingGateway" class="org.springframework.integration.core.MessagingTemplate">
-		<property name="defaultChannel" ref="request" />
-		<property name="receiveTimeout" value="1000" />
-	</bean>
+	<!-- adapters -->
+	<int-jms:outbound-channel-adapter connection-factory="connectionFactory" channel="request" destination-name="request" />
+	
+	<int:channel id="incoming" />
 	
 	<!-- transformer -->
 	<int:transformer input-channel="incoming" output-channel="replies" ref="headerExtractor" method="extract" />
 	<bean id="headerExtractor" class="org.springframework.batch.integration.chunk.JmsRedeliveredExtractor" />
-	
-	<!-- adapters -->
-	<int-jms:outbound-channel-adapter connection-factory="connectionFactory" channel="request" destination-name="request" />
 	
 	<bean class="org.springframework.beans.factory.config.CustomScopeConfigurer">
 		<property name="scopes">
@@ -83,9 +78,6 @@
 		</property>
 	</bean>
 	
-	<!-- channels -->
-	<int:channel id="request" />
-	<int:channel id="incoming" />
 	<int:channel id="replies" scope="thread">
 		<int:queue/>
 		<int:interceptors>
