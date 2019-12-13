@@ -1,9 +1,7 @@
 package сom.devblogs.batch.writer;
 
 import java.util.List;
-
 import javax.sql.DataSource;
-
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.devblogs.model.Product;
