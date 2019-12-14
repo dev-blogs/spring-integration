@@ -31,7 +31,7 @@
 						<bean class="org.springframework.batch.item.support.PassThroughItemProcessor" />
 					</property>
 					<property name="itemWriter">
-						<bean class="сom.devblogs.batch.writer.ProductJdbcItemWriter">
+						<bean class="com.devblogs.batch.writer.ProductJdbcItemWriter">
 							<constructor-arg ref="dataSource" />
 						</bean>
 					</property>
