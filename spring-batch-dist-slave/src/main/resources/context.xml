@@ -22,8 +22,6 @@
 			<jms:listener destination="request" response-destination="replies" ref="chunkHandler" method="handleChunk"/>
 		</jms:listener-container>
 		
-		<int-stream:stdout-channel-adapter id="incoming" />
-		
 		<bean id="chunkHandler" class="org.springframework.batch.integration.chunk.ChunkProcessorChunkHandler">
 			<property name="chunkProcessor">
 				<bean class="org.springframework.batch.core.step.item.SimpleChunkProcessor">
