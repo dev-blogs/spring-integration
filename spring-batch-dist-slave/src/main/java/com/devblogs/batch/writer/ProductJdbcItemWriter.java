@@ -1,4 +1,4 @@
-package сom.devblogs.batch.writer;
+package com.devblogs.batch.writer;
 
 import java.util.List;
 import javax.sql.DataSource;
