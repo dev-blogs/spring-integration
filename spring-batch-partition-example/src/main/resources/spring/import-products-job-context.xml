@@ -1,0 +1,72 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+http://www.springframework.org/schema/batch
+http://www.springframework.org/schema/batch/spring-batch-2.1.xsd">
+
+	<job id="importProducts" xmlns="http://www.springframework.org/schema/batch">
+		<listeners>
+			<listener ref="databaseUpdateListener"/>
+		</listeners>
+		<step id="decompress" next="readWriteProducts">
+			<tasklet ref="decompressTasklet"/>
+		</step>
+		<step id="readWriteProducts">
+			<partition step="partitionReadWriteProducts" partitioner="partitioner">
+				<handler grid-size="2" task-executor="taskExecutor" />
+			</partition>
+		</step>
+	</job>
+	
+	<step id="partitionReadWriteProducts" xmlns="http://www.springframework.org/schema/batch">
+		<tasklet>
+			<chunk reader="reader" writer="writer" commit-interval="7" skip-limit="5">
+				<skippable-exception-classes>
+					<include class="org.springframework.batch.item.file.FlatFileParseException"/>
+				</skippable-exception-classes>
+			</chunk>
+		</tasklet>
+	</step>
+	
+	<bean id="partitioner" class="org.springframework.batch.core.partition.support.MultiResourcePartitioner">
+		<property name="keyName" value="fileName" />
+		<property name="resources" value="file:./resources/partition/input/*.txt" />
+	</bean>
+	
+	<bean id="taskExecutor" class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor">
+		<property name="corePoolSize" value="5" />
+		<property name="maxPoolSize" value="5" />
+	</bean>
+	
+	<bean id="databaseUpdateListener" class="com.example.batch.listener.DatabaseUpdateListener">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<bean id="reader" class="org.springframework.batch.item.file.FlatFileItemReader" scope="step">
+		<property name="resource" value="#{stepExecutionContext[fileName]}" />
+		<property name="linesToSkip" value="1" />
+		<property name="lineMapper">
+			<bean class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+				<property name="lineTokenizer">
+					<bean class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+						<property name="names" value="ID,NAME,DESCRIPTION,PRICE" />
+					</bean>
+				</property>
+				<property name="fieldSetMapper">
+					<bean class="com.example.batch.ProductFieldSetMapper" />
+				</property>
+			</bean>
+		</property>
+	</bean>
+
+	<bean id="writer" class="com.example.batch.ProductJdbcItemWriter">
+		<constructor-arg ref="dataSource" />
+	</bean>
+	
+	<bean id="decompressTasklet" class="com.example.batch.DecompressTasklet" scope="step">
+		<property name="inputResource" value="#{jobParameters['inputResource']}" />
+		<property name="targetDirectory" value="#{jobParameters['targetDirectory']}" />
+	</bean>
+</beans>
