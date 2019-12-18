@@ -1,0 +1,96 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xmlns:int="http://www.springframework.org/schema/integration"
+	xmlns:int-stream="http://www.springframework.org/schema/integration/stream"
+	xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+						http://www.springframework.org/schema/batch
+						http://www.springframework.org/schema/batch/spring-batch-2.1.xsd
+						http://www.springframework.org/schema/integration
+						http://www.springframework.org/schema/integration/spring-integration-2.0.xsd
+						http://www.springframework.org/schema/integration/stream
+						http://www.springframework.org/schema/integration/stream/spring-integration-stream-2.0.xsd
+						http://www.springframework.org/schema/integration/jms
+						http://www.springframework.org/schema/integration/jms/spring-integration-jms-2.0.xsd">
+
+	<import resource="infrastructure.xml"/>
+
+	<job id="importProductsJob" xmlns="http://www.springframework.org/schema/batch">
+		<listeners>
+			<listener ref="databaseUpdateListener"/>
+		</listeners>
+		<step id="decompress" next="imoportProductStep-master">
+			<tasklet ref="decompressTasklet"/>
+		</step>
+		<step id="imoportProductStep-master">
+			<partition partitioner="partitioner" handler="handler" />
+		</step>
+	</job>
+	
+	<bean id="decompressTasklet" class="com.example.batch.DecompressTasklet" scope="step">
+		<property name="inputResource" value="#{jobParameters['inputResource']}" />
+		<property name="targetDirectory" value="#{jobParameters['targetDirectory']}" />
+	</bean>
+	
+	<bean id="partitioner" class="org.springframework.batch.core.partition.support.MultiResourcePartitioner">
+		<property name="keyName" value="fileName" />
+		<property name="resources" value="file:./resources/partition/input/*.txt" />
+	</bean>
+	
+	<bean id="handler" class="org.springframework.batch.integration.partition.MessageChannelPartitionHandler">
+		<property name="messagingOperations">
+			<bean class="org.springframework.integration.core.MessagingTemplate">
+				<property name="defaultChannel" ref="requests" />
+				<property name="receiveTimeout" value="1000" />
+			</bean>
+		</property>
+		<property name="replyChannel" ref="replies" />
+		<property name="stepName" value="remoteStep" />
+		<property name="gridSize" value="2" />
+	</bean>
+	
+	<bean id="databaseUpdateListener" class="com.example.batch.listener.DatabaseUpdateListener">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<int:channel id="requests" />
+	<int:channel id="incoming" />
+	
+	<int-jms:outbound-channel-adapter connection-factory="connectionFactory" channel="requests" destination-name="requests" />
+	
+	<!-- transformer -->
+	<int:transformer input-channel="incoming" output-channel="replies" ref="headerExtractor" method="extract" />
+	<bean id="headerExtractor" class="org.springframework.batch.integration.chunk.JmsRedeliveredExtractor" />
+	
+	<bean class="org.springframework.beans.factory.config.CustomScopeConfigurer">
+		<property name="scopes">
+			<map>
+				<entry key="thread">
+					<bean class="org.springframework.context.support.SimpleThreadScope" />
+				</entry>
+			</map>
+		</property>
+	</bean>
+	
+	<int:channel id="replies" scope="thread">
+		<int:queue/>
+		<int:interceptors>
+			<bean id="pollerInterceptor" class="org.springframework.batch.integration.chunk.MessageSourcePollerInterceptor">
+				<property name="messageSource">
+					<bean class="org.springframework.integration.jms.JmsDestinationPollingSource">
+						<constructor-arg>
+							<bean class="org.springframework.jms.core.JmsTemplate">
+								<property name="connectionFactory" ref="connectionFactory" />
+								<property name="defaultDestinationName" value="replies" />
+								<property name="receiveTimeout" value="100" />
+							</bean>
+						</constructor-arg>
+					</bean>
+				</property>
+				<property name="channel" ref="incoming" />
+			</bean>
+		</int:interceptors>
+	</int:channel>
+</beans>
